@@ -85,6 +85,50 @@ src/
 
 ---
 
+## How to Adapt This Engine (for Remorse Chess)
+
+Because this project uses `chess.js` for board representation and a **pure TypeScript AI** in `src/hooks/chess/useStockfish.ts` (rather than an external Stockfish WASM binary), you have full control over both rule enforcement and AI decision-making.
+
+### Recommended Adaptation Pattern
+
+1. **Create a Shared Variant Rule Module** (e.g., `src/rules/remorseChess.ts`):
+   - Centralize all Remorse Chess rule logic in one place so the UI and AI stay in sync.
+   - If Remorse Chess builds on standard piece movement (e.g., filtering legal moves, post-move penalties, undo/regret mechanics, or custom win conditions), wrap `chess.js` methods (`getLegalMoves(game, variantState)`, `applyVariantMove(game, move, variantState)`, `getVariantGameOver(game, variantState)`).
+   - If Remorse Chess alters how pieces move or changes check/pin legality, implement custom move generation and board state transitions here instead of delegating to `game.moves()`.
+2. **Extend Game State (`src/types/chess/chess.ts` & `src/hooks/chess/useChessGame.ts`)**:
+   - Add any variant-specific fields (e.g., remorse tokens, pending penalty/undo state, turn modifiers) to `GameState`.
+   - Route `handleSquareClick` and `syncGameState` in `useChessGame.ts` through your shared rule module instead of calling `game.moves()` / `game.move()` directly.
+3. **Update the AI Search & Evaluation (`src/hooks/chess/useStockfish.ts`)**:
+   - Replace `game.moves({ verbose: true })` and `game.move()` / `game.undo()` inside `minimax`, `orderMoves`, `getBestMoveWithMinimax`, and `getSimpleAIMove` with your variant rule module's move generation and state transitions.
+   - Update `evaluateBoard` so the static evaluation accounts for Remorse Chess incentives, penalties, and win/loss states.
+4. **Surface Variant UI (`src/components/chess/ChessBoard3D.tsx` & `GamePanel.tsx`)**:
+   - Pass any new square highlights or action prompts (such as remorse/undo triggers or restricted squares) into `ChessBoard3D` and `GamePanel`.
+
+---
+
+## How to Make This Two-Player (Online Multiplayer)
+
+To support two players competing over the internet, separate **game state authority** from the local client and synchronize moves over a real-time connection.
+
+### 1. Real-Time Transport & Room Backend
+- Use a lightweight WebSocket backend—such as **Node.js (`ws` / `Socket.IO`)**, **PartyKit**, **Cloudflare Durable Objects**, or **Supabase Realtime**—to manage game rooms identified by a shareable `roomId` (e.g., `?room=abc123`).
+- Keep the server **authoritative**: run `chess.js` (and any Remorse Chess rule module) on the server per room so it:
+  - Assigns connecting players to White (`w`) and Black (`b`).
+  - Validates every incoming move against the current room state.
+  - Rejects out-of-turn or illegal moves and broadcasts the updated `fen`, `lastMove`, `moveHistory`, and `capturedPieces` to both clients.
+
+### 2. Client Networking Hook (`src/hooks/chess/useMultiplayerGame.ts`)
+- Implement a `useMultiplayerGame(roomId)` hook with the same return shape as `useChessGame.ts` (`gameState`, `game`, `moveHistory`, `capturedPieces`, `handleSquareClick`, `newGame`, `playerColor`, `isPlayerTurn`).
+- In online mode, disable the local `useStockfish` AI turn trigger.
+- When `handleSquareClick` completes a legal move locally, emit `{ type: 'move', from, to, promotion }` to the server.
+- When a `state` message arrives from the server, update `gameRef.current.load(fen)` and call `syncGameState()`. Because `ChessBoard3D.tsx` tracks pieces by persistent IDs across FEN changes, opponent moves will automatically animate smoothly with `@react-spring/three`.
+
+### 3. UI & Session Controls (`src/App.tsx` & `GamePanel.tsx`)
+- Add a mode toggle (**vs AI** / **Online 2P**) and a **Create / Join Room** control with a copyable invite URL.
+- Display connection status (waiting for opponent, connected, opponent disconnected) and optional multiplayer actions such as **Offer Draw**, **Resign**, and **Rematch**.
+
+---
+
 ## Local Development
 
 ### Prerequisites
