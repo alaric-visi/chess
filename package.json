@@ -1,5 +1,6 @@
 {
   "name": "chess-3d",
+  "description": "Interactive 3D chess web app built with React, Three.js (@react-three/fiber), chess.js, and an in-browser minimax/alpha-beta AI opponent.",
   "private": true,
   "version": "1.0.0",
   "type": "module",
