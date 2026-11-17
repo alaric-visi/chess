@@ -1,5 +1,7 @@
 # Chess 3D
 
+> **Play Live:** **[https://archive.mikehiggins.me.uk/notes/board-games/chess/](https://archive.mikehiggins.me.uk/notes/board-games/chess/)**
+
 An interactive, self-contained 3D chess web application built with **React 19**, **TypeScript**, **Three.js** (`@react-three/fiber`, `@react-three/drei`, `@react-spring/three`), **chess.js**, and **Tailwind CSS**. It renders procedural 3D chess sets in WebGL and runs an in-browser chess AI opponent with six difficulty levels—requiring no backend server or external 3D model assets.
 
 ## Features
