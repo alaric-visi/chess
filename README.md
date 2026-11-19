@@ -1,6 +1,6 @@
 # Chess 3D
 
-> **Made by [Mike Higgins](https://mikehiggins.me.uk/)** — **[https://mikehiggins.me.uk/](https://mikehiggins.me.uk/)**
+> **Made by [Mike Higgins](https://mikehiggins.me.uk/)**
 >
 > **Play Live:** **[https://archive.mikehiggins.me.uk/notes/board-games/chess/](https://archive.mikehiggins.me.uk/notes/board-games/chess/)**
 
