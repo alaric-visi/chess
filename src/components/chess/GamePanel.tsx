@@ -1,168 +1,226 @@
-import { Move, Chess, Color } from 'chess.js';
-import { DifficultyLevel, DIFFICULTY_LEVELS } from '../../types/chess/chess';
+import { Color } from 'chess.js';
+import { Cpu, User, Loader2, Undo2, Lightbulb, Plus, ArrowLeftRight } from 'lucide-react';
+import { DIFFICULTY_LEVELS, getLevel } from '../../engine/levels';
+import { PIECE_SETS, PieceSet } from '../../types/chess/chess';
+import type { ChessGame } from '../../hooks/chess/useChessGame';
+import { buttonClass, labelClass, selectClass } from '../ui/styles';
 import { CapturedPieces } from './CapturedPieces';
 import { MoveHistory } from './MoveHistory';
-import { RotateCcw, Cpu, User, Loader2 } from 'lucide-react';
+import { MaterialBar } from './MaterialBar';
+import { EvalBar } from './EvalBar';
+import { BOARD_THEME_CHOICES, BoardThemeChoice } from './boardThemes';
 
 interface GamePanelProps {
-  game: Chess;
-  moveHistory: Move[];
-  capturedPieces: { white: string[]; black: string[] };
-  isThinking: boolean;
-  gameOver: boolean;
-  result: string | null;
+  chess: ChessGame;
   onNewGame: () => void;
-  difficulty: DifficultyLevel;
-  onDifficultyChange: (level: DifficultyLevel) => void;
-  isEngineReady: boolean;
-  playerColor: Color;
-  onPlayerColorChange: (color: Color) => void;
-  pieceSet: 'classic' | 'scifi' | 'fantasy';
-  onPieceSetChange: (set: 'classic' | 'scifi' | 'fantasy') => void;
-  className?: string;
+  onImportExport: () => void;
+  /** The mobile sheet already shows status in its header. */
+  hideStatus?: boolean;
 }
 
-export const GamePanel = ({
-  game,
-  moveHistory,
-  capturedPieces,
-  isThinking,
-  gameOver,
-  result,
-  onNewGame,
-  difficulty,
-  onDifficultyChange,
-  isEngineReady,
-  playerColor,
-  onPlayerColorChange,
-  pieceSet,
-  onPieceSetChange,
-}: GamePanelProps) => {
-  const currentTurn = game.turn();
-  const isInCheck = game.isCheck();
+/** One-line game status, shared by the side panel and the mobile sheet. */
+export function GameStatus({ chess }: { chess: ChessGame }) {
+  const { turn, playerColor, isThinking, isGameOver, inCheck, result, isViewing, viewPly, viewMove } = chess;
 
-  const buttonClass = "w-full flex items-center justify-center px-4 py-2 font-label-mono text-[10px] uppercase transition-colors cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,0.8)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.3)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] border bg-transparent text-primary border-primary hover:bg-primary hover:text-on-primary dark:text-on-primary dark:border-on-primary dark:hover:bg-on-primary dark:hover:text-primary";
-  const selectClass = "w-full h-8 px-2 font-label-mono text-[10px] uppercase bg-transparent border border-primary/50 text-primary focus:outline-none focus:border-primary dark:text-on-primary dark:border-on-primary/50 dark:focus:border-on-primary dark:bg-black";
+  if (isViewing) {
+    return (
+      <div className="flex items-center gap-2 p-2 border border-info text-info bg-info/10 text-xs uppercase font-bold">
+        <span>Reviewing {viewPly === 0 ? 'start' : `move ${Math.ceil(viewPly! / 2)}`}</span>
+        <button className="ml-auto underline uppercase" onClick={() => viewMove(null)}>
+          Back to live
+        </button>
+      </div>
+    );
+  }
+  if (isGameOver && result) {
+    return (
+      <div
+        className={`p-2 text-center text-xs uppercase font-bold border ${
+          result.winner === null
+            ? 'border-info text-info bg-info/10'
+            : result.winner === playerColor
+              ? 'border-ok text-ok bg-ok/10'
+              : 'border-bad text-bad bg-bad/10'
+        }`}
+      >
+        {result.text}
+      </div>
+    );
+  }
+  const yourTurn = turn === playerColor;
+  return (
+    <div
+      className={`flex items-center gap-2 p-2 border text-xs uppercase font-bold transition-colors ${
+        inCheck
+          ? 'border-warn text-warn bg-warn/10'
+          : yourTurn
+            ? 'border-ok text-ok bg-ok/10'
+            : 'border-fg/30'
+      }`}
+    >
+      {yourTurn ? <User className="h-3.5 w-3.5" /> : <Cpu className="h-3.5 w-3.5" />}
+      <span>
+        {yourTurn ? 'Your turn' : 'Computer thinking…'}
+        {inCheck && ' — check!'}
+      </span>
+      {isThinking && <Loader2 className="h-3.5 w-3.5 animate-spin ml-auto" aria-hidden />}
+    </div>
+  );
+}
+
+/** Undo and hint, shared by the side panel and the mobile sheet. */
+export function QuickActions({ chess }: { chess: ChessGame }) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <button className={buttonClass} onClick={chess.undo} disabled={!chess.canUndo}>
+        <Undo2 className="h-3.5 w-3.5" /> Undo
+      </button>
+      <button
+        className={buttonClass}
+        onClick={chess.requestHint}
+        disabled={!chess.canHint || chess.isHinting}
+      >
+        {chess.isHinting ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Lightbulb className="h-3.5 w-3.5" />
+        )}
+        Hint
+      </button>
+    </div>
+  );
+}
+
+export const GamePanel = ({ chess, onNewGame, onImportExport, hideStatus }: GamePanelProps) => {
+  const { playerColor, difficulty, setDifficulty, pieceSet, setPieceSet, captured, materialBalance } = chess;
+
+  const computerColor: Color = playerColor === 'w' ? 'b' : 'w';
+  const playerLead = playerColor === 'w' ? materialBalance : -materialBalance;
 
   return (
-    <div className="flex flex-col h-full space-y-4 font-label-mono text-primary dark:text-on-primary">
-      {/* Settings Row */}
+    <div className="flex flex-col gap-4 font-label-mono text-fg">
+      {!hideStatus && <GameStatus chess={chess} />}
+      <QuickActions chess={chess} />
+
       <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <label className="text-[10px] uppercase opacity-70">Difficulty</label>
+        <div className="space-y-1.5 col-span-2">
+          <label htmlFor="difficulty" className={labelClass}>
+            Difficulty
+          </label>
           <select
-            value={difficulty.name}
-            onChange={(e) => {
-              const level = DIFFICULTY_LEVELS.find(l => l.name === e.target.value);
-              if (level) onDifficultyChange(level);
-            }}
+            id="difficulty"
+            value={difficulty.id}
+            onChange={(e) => setDifficulty(getLevel(e.target.value))}
             className={selectClass}
           >
-            {DIFFICULTY_LEVELS.map(level => (
-              <option key={level.name} value={level.name} className="dark:bg-black">
-                {level.name}
+            {DIFFICULTY_LEVELS.map((level) => (
+              <option key={level.id} value={level.id}>
+                {level.name} (~{level.elo})
               </option>
             ))}
           </select>
         </div>
-
         <div className="space-y-1.5">
-          <label className="text-[10px] uppercase opacity-70">Play as</label>
+          <label htmlFor="piece-set" className={labelClass}>
+            Piece set
+          </label>
           <select
-            value={playerColor}
-            onChange={(e) => onPlayerColorChange(e.target.value as Color)}
-            className={selectClass}
-          >
-            <option value="w" className="dark:bg-black">White</option>
-            <option value="b" className="dark:bg-black">Black</option>
-          </select>
-        </div>
-
-        <div className="space-y-1.5 col-span-2">
-          <label className="text-[10px] uppercase opacity-70">Piece Set</label>
-          <select
+            id="piece-set"
             value={pieceSet}
-            onChange={(e) => onPieceSetChange(e.target.value as 'classic' | 'scifi' | 'fantasy')}
+            onChange={(e) => setPieceSet(e.target.value as PieceSet)}
             className={selectClass}
           >
-            <option value="classic" className="dark:bg-black">Classic</option>
-            <option value="scifi" className="dark:bg-black">Sci-Fi</option>
-            <option value="fantasy" className="dark:bg-black">Fantasy</option>
+            {PIECE_SETS.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
           </select>
         </div>
+        <div className="space-y-1.5">
+          <label htmlFor="board-theme" className={labelClass}>
+            Board
+          </label>
+          <select
+            id="board-theme"
+            value={chess.boardThemeChoice}
+            onChange={(e) => chess.setBoardThemeChoice(e.target.value as BoardThemeChoice)}
+            className={selectClass}
+          >
+            {BOARD_THEME_CHOICES.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.id === 'auto' ? `Auto (${chess.boardTheme.name})` : t.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <p className="col-span-2 text-xs uppercase text-muted">
+          You play {playerColor === 'w' ? 'White' : 'Black'}. Difficulty changes apply from the next move.
+        </p>
       </div>
 
-      {!isEngineReady && (
-        <div className="flex items-center gap-2 text-[10px] uppercase opacity-70">
-          <Loader2 className="h-3 w-3 animate-spin" />
-          Loading engine...
-        </div>
-      )}
-
-      {/* Turn Indicator */}
-      <div className={`flex items-center gap-2 p-2 border text-[10px] uppercase font-bold transition-colors ${
-          currentTurn === playerColor
-            ? 'border-green-500 text-green-500 bg-green-500/10'
-            : 'border-primary/30 opacity-70'
-        }`}>
-        {currentTurn === playerColor ? (
-          <User className="h-3 w-3" />
-        ) : (
-          <Cpu className="h-3 w-3" />
-        )}
-        <span>{currentTurn === playerColor ? 'Your turn' : 'Computer thinking...'}</span>
-        {isThinking && <Loader2 className="h-3 w-3 animate-spin ml-auto" />}
-      </div>
-
-      {/* Game Status */}
-      {(gameOver || isInCheck) && (
-        <div className={`p-2 text-center text-[10px] uppercase font-bold border animate-pulse ${
-            gameOver
-              ? 'border-red-500 text-red-500 bg-red-500/10'
-              : 'border-yellow-500 text-yellow-500 bg-yellow-500/10'
-          }`}>
-          {result || (isInCheck ? 'Check!' : '')}
-        </div>
-      )}
-
-      {/* Captured Pieces */}
+      {/* Captured pieces: each column lists what that side has taken */}
       <div className="space-y-2">
-        <h3 className="text-[10px] uppercase opacity-70">Captured pieces</h3>
+        <div className="flex items-center justify-between">
+          <h3 className={labelClass}>Analysis</h3>
+          <label className="flex items-center gap-2 text-xs uppercase cursor-pointer">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-current"
+              checked={chess.analysisOn}
+              onChange={(e) => chess.setAnalysisOn(e.target.checked)}
+            />
+            Show eval &amp; best move
+          </label>
+        </div>
+        {chess.analysisOn && (
+          <EvalBar
+            evaluation={chess.analysis?.evaluation ?? null}
+            playerColor={playerColor}
+            paused={chess.analysisPaused}
+          />
+        )}
+        <h3 className={labelClass}>Material</h3>
+        <MaterialBar lead={playerLead} />
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
-            <div className="flex items-center gap-1 text-[10px] uppercase opacity-70">
-              <Cpu className="h-3 w-3" /> Computer
-            </div>
-            <CapturedPieces pieces={capturedPieces.white} color="w" />
-          </div>
-          <div className="space-y-1">
-            <div className="flex items-center gap-1 text-[10px] uppercase opacity-70">
+            <div className="flex items-center gap-1 text-xs uppercase text-muted">
               <User className="h-3 w-3" /> You
             </div>
-            <CapturedPieces pieces={capturedPieces.black} color="b" />
+            <CapturedPieces pieces={captured[playerColor]} color={computerColor} advantage={playerLead} />
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-1 text-xs uppercase text-muted">
+              <Cpu className="h-3 w-3" /> Computer
+            </div>
+            <CapturedPieces pieces={captured[computerColor]} color={playerColor} advantage={-playerLead} />
           </div>
         </div>
       </div>
 
-      {/* Move History */}
       <div className="space-y-2">
-        <h3 className="text-[10px] uppercase opacity-70">Move history</h3>
-        <MoveHistory moves={moveHistory} />
+        <h3 className={labelClass}>Moves</h3>
+        <MoveHistory moves={chess.history} viewPly={chess.viewPly} onView={chess.viewMove} />
       </div>
 
-      {/* New Game Button */}
-      <div className="pt-2 mt-auto">
-          <button onClick={onNewGame} className={buttonClass}>
-            <RotateCcw className="h-3 w-3 mr-2" />
-            New Game
-          </button>
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={onNewGame} className={buttonClass}>
+          <Plus className="h-3.5 w-3.5" /> New game
+        </button>
+        <button onClick={onImportExport} className={buttonClass}>
+          <ArrowLeftRight className="h-3.5 w-3.5" /> PGN / FEN
+        </button>
       </div>
-      
-      {/* Instructions */}
-      <div className="text-[9px] uppercase opacity-50 space-y-0.5 pt-2 border-t border-primary/20 text-center">
-        <p>Click to select • Green = valid moves</p>
-        <p>Drag to rotate • Scroll to zoom</p>
-      </div>
+
+      <details className="text-xs uppercase text-muted border-t border-fg/20 pt-3">
+        <summary className="cursor-pointer">Controls &amp; shortcuts</summary>
+        <ul className="mt-2 space-y-1 normal-case">
+          <li>Click a piece then a square, or drag the piece.</li>
+          <li>Drag empty space to orbit, scroll or pinch to zoom.</li>
+          <li>Board focused: arrow keys move the cursor, Enter selects or moves, Esc cancels.</li>
+          <li>Elsewhere: ← / → step through moves, Home / End jump to start / live.</li>
+        </ul>
+      </details>
     </div>
   );
 };

@@ -1,6 +1,5 @@
-import { useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
-import { useSpring } from '@react-spring/three';
+import { AnimatedPiece, PieceProps } from './AnimatedPiece';
+import { Geo, SharedMaterial } from './Shared';
 import * as THREE from 'three';
 import { PieceSymbol, Color } from 'chess.js';
 
@@ -18,14 +17,6 @@ import { PieceSymbol, Color } from 'chess.js';
  * silver fittings and ember gems. Same props as ChessPiece3D, so it's a
  * drop-in swap in ChessBoard3D.
  */
-
-interface ChessPiece3DProps {
-  type: PieceSymbol;
-  color: Color;
-  position: [number, number, number];
-  isSelected: boolean;
-  onClick: () => void;
-}
 
 const SCALE = 0.85;
 
@@ -111,44 +102,70 @@ type PartProps = { pieceColor: Color; isSelected: boolean };
 
 function StoneMaterial({ pieceColor, isSelected }: PartProps) {
   return (
-    <meshPhysicalMaterial
-      {...STONE[pieceColor]}
-      emissive={GEM[pieceColor]}
-      emissiveIntensity={isSelected ? 0.15 : 0}
+    <SharedMaterial
+      id={`fantasy-stone-${pieceColor}-${isSelected}`}
+      create={() =>
+        new THREE.MeshPhysicalMaterial({
+          ...STONE[pieceColor],
+          emissive: GEM[pieceColor],
+          emissiveIntensity: isSelected ? 0.15 : 0,
+        })
+      }
     />
   );
 }
 
 function MetalMaterial({ pieceColor }: { pieceColor: Color }) {
-  return <meshStandardMaterial {...METAL[pieceColor]} />;
+  return (
+    <SharedMaterial
+      id={`fantasy-metal-${pieceColor}`}
+      create={() => new THREE.MeshStandardMaterial(METAL[pieceColor])}
+    />
+  );
 }
 
 function GemMaterial({ pieceColor, isSelected, intensity = 1.4 }: PartProps & { intensity?: number }) {
+  const strength = isSelected ? intensity * 2.2 : intensity;
   return (
-    <meshStandardMaterial
-      color={GEM[pieceColor]}
-      emissive={GEM[pieceColor]}
-      emissiveIntensity={isSelected ? intensity * 2.2 : intensity}
-      toneMapped={false}
+    <SharedMaterial
+      id={`fantasy-gem-${pieceColor}-${strength}`}
+      create={() =>
+        new THREE.MeshStandardMaterial({
+          color: GEM[pieceColor],
+          emissive: GEM[pieceColor],
+          emissiveIntensity: strength,
+          toneMapped: false,
+        })
+      }
     />
   );
 }
 
 function CrystalMaterial({ pieceColor }: { pieceColor: Color }) {
   return (
-    <meshPhysicalMaterial
-      color={GEM[pieceColor]}
-      transparent
-      opacity={0.4}
-      roughness={0.05}
-      clearcoat={1}
-      depthWrite={false}
+    <SharedMaterial
+      id={`fantasy-crystal-${pieceColor}`}
+      create={() =>
+        new THREE.MeshPhysicalMaterial({
+          color: GEM[pieceColor],
+          transparent: true,
+          opacity: 0.4,
+          roughness: 0.05,
+          clearcoat: 1,
+          depthWrite: false,
+        })
+      }
     />
   );
 }
 
 function DarkMaterial() {
-  return <meshStandardMaterial color="#0B0A0A" roughness={0.9} />;
+  return (
+    <SharedMaterial
+      id="fantasy-dark"
+      create={() => new THREE.MeshStandardMaterial({ color: '#0B0A0A', roughness: 0.9 })}
+    />
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -160,11 +177,11 @@ function Plinth({ radius, pieceColor, isSelected }: PartProps & { radius: number
   return (
     <group>
       <mesh position={[0, 0.05, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[radius - 0.02, radius, 0.10, 8]} />
+        <Geo kind="cylinder" args={[radius - 0.02, radius, 0.1, 8]} />
         <StoneMaterial pieceColor={pieceColor} isSelected={isSelected} />
       </mesh>
       <mesh position={[0, 0.105, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[radius - 0.045, 0.02, 10, 48]} />
+        <Geo kind="torus" args={[radius - 0.045, 0.02, 10, 48]} />
         <MetalMaterial pieceColor={pieceColor} />
       </mesh>
     </group>
@@ -175,8 +192,11 @@ function Plinth({ radius, pieceColor, isSelected }: PartProps & { radius: number
 // Pawn — foot soldier's helm
 // ---------------------------------------------------------------------------
 const PAWN_BODY: ProfilePoint[] = [
-  [0, PLINTH_TOP, 'sharp'], [0.21, PLINTH_TOP, 'sharp'],
-  [0.20, 0.22], [0.17, 0.34], [0.14, 0.42],
+  [0, PLINTH_TOP, 'sharp'],
+  [0.21, PLINTH_TOP, 'sharp'],
+  [0.2, 0.22],
+  [0.17, 0.34],
+  [0.14, 0.42],
   [0, 0.43, 'sharp'],
 ];
 
@@ -190,27 +210,27 @@ function Pawn({ pieceColor, isSelected }: PartProps) {
       </mesh>
       {/* helm */}
       <mesh position={[0, 0.44, 0]} castShadow>
-        <cylinderGeometry args={[0.15, 0.17, 0.03, 32]} />
+        <Geo kind="cylinder" args={[0.15, 0.17, 0.03, 32]} />
         <MetalMaterial pieceColor={pieceColor} />
       </mesh>
       <mesh position={[0, 0.45, 0]} castShadow receiveShadow>
-        <sphereGeometry args={[0.15, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2]} />
+        <Geo kind="sphere" args={[0.15, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2]} />
         <MetalMaterial pieceColor={pieceColor} />
       </mesh>
       {/* visor slit and nose guard (front is +z for white, -z for black) */}
       <group rotation={[0, pieceColor === 'w' ? 0 : Math.PI, 0]}>
         <mesh position={[0, 0.46, 0.14]}>
-          <boxGeometry args={[0.16, 0.025, 0.03]} />
+          <Geo kind="box" args={[0.16, 0.025, 0.03]} />
           <DarkMaterial />
         </mesh>
         <mesh position={[0, 0.42, 0.155]}>
-          <boxGeometry args={[0.025, 0.10, 0.02]} />
+          <Geo kind="box" args={[0.025, 0.1, 0.02]} />
           <MetalMaterial pieceColor={pieceColor} />
         </mesh>
       </group>
       {/* plume */}
       <mesh position={[0, 0.66, 0]} castShadow>
-        <coneGeometry args={[0.035, 0.14, 12]} />
+        <Geo kind="cone" args={[0.035, 0.14, 12]} />
         <GemMaterial pieceColor={pieceColor} isSelected={isSelected} intensity={0.9} />
       </mesh>
     </group>
@@ -221,14 +241,25 @@ function Pawn({ pieceColor, isSelected }: PartProps) {
 // Rook — stone keep
 // ---------------------------------------------------------------------------
 const KEEP_PROFILE: ProfilePoint[] = [
-  [0, PLINTH_TOP, 'sharp'], [0.28, PLINTH_TOP, 'sharp'],
-  [0.26, 0.20], [0.23, 0.32], [0.22, 0.70],
-  [0.25, 0.74, 'sharp'], [0.27, 0.78, 'sharp'], [0.27, 0.90, 'sharp'],
-  [0.19, 0.90, 'sharp'], [0.19, 0.85, 'sharp'], [0, 0.85, 'sharp'],
+  [0, PLINTH_TOP, 'sharp'],
+  [0.28, PLINTH_TOP, 'sharp'],
+  [0.26, 0.2],
+  [0.23, 0.32],
+  [0.22, 0.7],
+  [0.25, 0.74, 'sharp'],
+  [0.27, 0.78, 'sharp'],
+  [0.27, 0.9, 'sharp'],
+  [0.19, 0.9, 'sharp'],
+  [0.19, 0.85, 'sharp'],
+  [0, 0.85, 'sharp'],
 ];
 
 const BANNER_OUTLINE: [number, number][] = [
-  [0, 0], [0.16, 0.03], [0.11, 0.08], [0.16, 0.13], [0, 0.16],
+  [0, 0],
+  [0.16, 0.03],
+  [0.11, 0.08],
+  [0.16, 0.13],
+  [0, 0.16],
 ];
 
 function Rook({ pieceColor, isSelected }: PartProps) {
@@ -242,8 +273,8 @@ function Rook({ pieceColor, isSelected }: PartProps) {
         <StoneMaterial pieceColor={pieceColor} isSelected={isSelected} />
       </mesh>
       {/* string course */}
-      <mesh position={[0, 0.50, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.225, 0.012, 8, 48]} />
+      <mesh position={[0, 0.5, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <Geo kind="torus" args={[0.225, 0.012, 8, 48]} />
         <MetalMaterial pieceColor={pieceColor} />
       </mesh>
       {/* battlements */}
@@ -256,7 +287,7 @@ function Rook({ pieceColor, isSelected }: PartProps) {
             rotation={[0, Math.PI / 2 - a, 0]}
             castShadow
           >
-            <boxGeometry args={[0.10, 0.10, 0.08]} />
+            <Geo kind="box" args={[0.1, 0.1, 0.08]} />
             <StoneMaterial pieceColor={pieceColor} isSelected={isSelected} />
           </mesh>
         );
@@ -264,30 +295,30 @@ function Rook({ pieceColor, isSelected }: PartProps) {
       {/* arched door and arrow slit, facing the opponent */}
       <group rotation={[0, pieceColor === 'w' ? 0 : Math.PI, 0]}>
         <mesh position={[0, 0.21, 0.24]}>
-          <boxGeometry args={[0.10, 0.14, 0.04]} />
+          <Geo kind="box" args={[0.1, 0.14, 0.04]} />
           <DarkMaterial />
         </mesh>
         <mesh position={[0, 0.28, 0.24]} rotation={[Math.PI / 2, 0, 0]}>
-          <cylinderGeometry args={[0.05, 0.05, 0.04, 16, 1, false, 0, Math.PI]} />
+          <Geo kind="cylinder" args={[0.05, 0.05, 0.04, 16, 1, false, 0, Math.PI]} />
           <DarkMaterial />
         </mesh>
         <mesh position={[0, 0.62, 0.22]}>
-          <boxGeometry args={[0.02, 0.10, 0.03]} />
+          <Geo kind="box" args={[0.02, 0.1, 0.03]} />
           <DarkMaterial />
         </mesh>
       </group>
       {/* corner turret with a conical roof and banner */}
-      <group position={[0.17, 0, -0.10]}>
+      <group position={[0.17, 0, -0.1]}>
         <mesh position={[0, 0.96, 0]} castShadow>
-          <cylinderGeometry args={[0.07, 0.07, 0.16, 20]} />
+          <Geo kind="cylinder" args={[0.07, 0.07, 0.16, 20]} />
           <StoneMaterial pieceColor={pieceColor} isSelected={isSelected} />
         </mesh>
         <mesh position={[0, 1.11, 0]} castShadow>
-          <coneGeometry args={[0.09, 0.16, 20]} />
+          <Geo kind="cone" args={[0.09, 0.16, 20]} />
           <MetalMaterial pieceColor={pieceColor} />
         </mesh>
         <mesh position={[0, 1.28, 0]}>
-          <cylinderGeometry args={[0.006, 0.006, 0.22, 8]} />
+          <Geo kind="cylinder" args={[0.006, 0.006, 0.22, 8]} />
           <MetalMaterial pieceColor={pieceColor} />
         </mesh>
         <mesh geometry={banner} position={[0.006, 1.22, 0]} rotation={[0, 0, 0]}>
@@ -302,15 +333,26 @@ function Rook({ pieceColor, isSelected }: PartProps) {
 // Bishop — wizard
 // ---------------------------------------------------------------------------
 const ROBE_PROFILE: ProfilePoint[] = [
-  [0, PLINTH_TOP, 'sharp'], [0.30, PLINTH_TOP, 'sharp'],
-  [0.28, 0.17], [0.21, 0.36], [0.16, 0.56], [0.14, 0.64],
+  [0, PLINTH_TOP, 'sharp'],
+  [0.3, PLINTH_TOP, 'sharp'],
+  [0.28, 0.17],
+  [0.21, 0.36],
+  [0.16, 0.56],
+  [0.14, 0.64],
   [0, 0.66, 'sharp'],
 ];
 
 const HAT_PROFILE: ProfilePoint[] = [
-  [0, 0.64, 'sharp'], [0.31, 0.61, 'sharp'],
-  [0.32, 0.64], [0.27, 0.69], [0.19, 0.72], [0.15, 0.75],
-  [0.12, 0.86], [0.08, 0.98], [0.045, 1.08], [0.02, 1.13],
+  [0, 0.64, 'sharp'],
+  [0.31, 0.61, 'sharp'],
+  [0.32, 0.64],
+  [0.27, 0.69],
+  [0.19, 0.72],
+  [0.15, 0.75],
+  [0.12, 0.86],
+  [0.08, 0.98],
+  [0.045, 1.08],
+  [0.02, 1.13],
   [0, 1.14, 'sharp'],
 ];
 
@@ -325,12 +367,12 @@ function Bishop({ pieceColor, isSelected }: PartProps) {
       </mesh>
       {/* belt and beard */}
       <mesh position={[0, 0.38, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.205, 0.014, 8, 48]} />
+        <Geo kind="torus" args={[0.205, 0.014, 8, 48]} />
         <MetalMaterial pieceColor={pieceColor} />
       </mesh>
       <group rotation={[0, pieceColor === 'w' ? 0 : Math.PI, 0]}>
         <mesh position={[0, 0.52, 0.15]} rotation={[0.25, 0, 0]} castShadow>
-          <coneGeometry args={[0.06, 0.22, 12]} />
+          <Geo kind="cone" args={[0.06, 0.22, 12]} />
           <MetalMaterial pieceColor={pieceColor} />
         </mesh>
       </group>
@@ -339,19 +381,19 @@ function Bishop({ pieceColor, isSelected }: PartProps) {
         <StoneMaterial pieceColor={pieceColor} isSelected={isSelected} />
       </mesh>
       <mesh position={[0, 0.74, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.155, 0.014, 8, 48]} />
+        <Geo kind="torus" args={[0.155, 0.014, 8, 48]} />
         <MetalMaterial pieceColor={pieceColor} />
       </mesh>
       {/* star on the band, facing the opponent */}
       <group rotation={[0, pieceColor === 'w' ? 0 : Math.PI, 0]}>
         <mesh position={[0, 0.76, 0.16]} rotation={[0, 0, Math.PI / 4]}>
-          <octahedronGeometry args={[0.035, 0]} />
+          <Geo kind="octahedron" args={[0.035, 0]} />
           <GemMaterial pieceColor={pieceColor} isSelected={isSelected} />
         </mesh>
       </group>
       {/* floppy tip */}
       <mesh position={[0.05, 1.14, 0]} rotation={[0, 0, -1.1]} castShadow>
-        <coneGeometry args={[0.025, 0.12, 10]} />
+        <Geo kind="cone" args={[0.025, 0.12, 10]} />
         <StoneMaterial pieceColor={pieceColor} isSelected={isSelected} />
       </mesh>
     </group>
@@ -362,29 +404,54 @@ function Bishop({ pieceColor, isSelected }: PartProps) {
 // Knight — dragon
 // ---------------------------------------------------------------------------
 const NECK_BASE: ProfilePoint[] = [
-  [0, PLINTH_TOP, 'sharp'], [0.28, PLINTH_TOP, 'sharp'],
-  [0.26, 0.17], [0.20, 0.22], [0.18, 0.26, 'sharp'], [0, 0.26, 'sharp'],
+  [0, PLINTH_TOP, 'sharp'],
+  [0.28, PLINTH_TOP, 'sharp'],
+  [0.26, 0.17],
+  [0.2, 0.22],
+  [0.18, 0.26, 'sharp'],
+  [0, 0.26, 'sharp'],
 ];
 
 // (forward, up) silhouette, +x is forward
 const DRAGON_OUTLINE: [number, number][] = [
   [-0.14, 0.24],
-  [-0.20, 0.34], [-0.19, 0.50], [-0.13, 0.62], [-0.10, 0.72],
+  [-0.2, 0.34],
+  [-0.19, 0.5],
+  [-0.13, 0.62],
+  [-0.1, 0.72],
   // spine spikes
-  [-0.17, 0.80], [-0.10, 0.80], [-0.15, 0.89], [-0.07, 0.87], [-0.09, 0.95],
-  [-0.02, 0.94],                          // back of skull
-  [0.06, 0.97], [0.14, 0.95], [0.22, 0.90], [0.30, 0.84],
-  [0.37, 0.78],                           // snout
-  [0.35, 0.72], [0.28, 0.70], [0.21, 0.70],
-  [0.31, 0.63],                           // lower jaw, open
-  [0.27, 0.58], [0.16, 0.60],
-  [0.09, 0.62],                           // throat
-  [0.03, 0.52], [0.01, 0.40],             // chest
-  [0.08, 0.28], [0.14, 0.24],
+  [-0.17, 0.8],
+  [-0.1, 0.8],
+  [-0.15, 0.89],
+  [-0.07, 0.87],
+  [-0.09, 0.95],
+  [-0.02, 0.94], // back of skull
+  [0.06, 0.97],
+  [0.14, 0.95],
+  [0.22, 0.9],
+  [0.3, 0.84],
+  [0.37, 0.78], // snout
+  [0.35, 0.72],
+  [0.28, 0.7],
+  [0.21, 0.7],
+  [0.31, 0.63], // lower jaw, open
+  [0.27, 0.58],
+  [0.16, 0.6],
+  [0.09, 0.62], // throat
+  [0.03, 0.52],
+  [0.01, 0.4], // chest
+  [0.08, 0.28],
+  [0.14, 0.24],
 ];
 
 const WING_OUTLINE: [number, number][] = [
-  [0, 0], [0.30, 0.10], [0.24, 0.16], [0.30, 0.26], [0.20, 0.28], [0.22, 0.36], [0.06, 0.34],
+  [0, 0],
+  [0.3, 0.1],
+  [0.24, 0.16],
+  [0.3, 0.26],
+  [0.2, 0.28],
+  [0.22, 0.36],
+  [0.06, 0.34],
 ];
 
 function Knight({ pieceColor, isSelected }: PartProps) {
@@ -406,14 +473,14 @@ function Knight({ pieceColor, isSelected }: PartProps) {
         {/* horns */}
         {[-0.05, 0.05].map((z) => (
           <mesh key={z} position={[0.0, 1.0, z]} rotation={[0, 0, 0.7]} castShadow>
-            <coneGeometry args={[0.022, 0.18, 8]} />
+            <Geo kind="cone" args={[0.022, 0.18, 8]} />
             <MetalMaterial pieceColor={pieceColor} />
           </mesh>
         ))}
         {/* eyes */}
         {[-half, half].map((z) => (
           <mesh key={z} position={[0.15, 0.86, z]}>
-            <sphereGeometry args={[0.022, 12, 12]} />
+            <Geo kind="sphere" args={[0.022, 12, 12]} />
             <GemMaterial pieceColor={pieceColor} isSelected={isSelected} />
           </mesh>
         ))}
@@ -422,7 +489,7 @@ function Knight({ pieceColor, isSelected }: PartProps) {
           <mesh
             key={s}
             geometry={wing}
-            position={[-0.14, 0.50, s * 0.09]}
+            position={[-0.14, 0.5, s * 0.09]}
             rotation={[0, s * -0.55, 0.35]}
             scale={[-1, 1, 1]}
             castShadow
@@ -431,8 +498,8 @@ function Knight({ pieceColor, isSelected }: PartProps) {
           </mesh>
         ))}
         {/* breath ember at the mouth */}
-        <mesh position={[0.30, 0.67, 0]}>
-          <sphereGeometry args={[0.028, 12, 12]} />
+        <mesh position={[0.3, 0.67, 0]}>
+          <Geo kind="sphere" args={[0.028, 12, 12]} />
           <GemMaterial pieceColor={pieceColor} isSelected={isSelected} intensity={1.8} />
         </mesh>
       </group>
@@ -444,9 +511,14 @@ function Knight({ pieceColor, isSelected }: PartProps) {
 // Queen — crescent spire
 // ---------------------------------------------------------------------------
 const QUEEN_SPIRE: ProfilePoint[] = [
-  [0, PLINTH_TOP, 'sharp'], [0.24, PLINTH_TOP, 'sharp'],
-  [0.20, 0.18], [0.13, 0.30], [0.10, 0.50], [0.09, 0.80],
-  [0.07, 0.98], [0.05, 1.02],
+  [0, PLINTH_TOP, 'sharp'],
+  [0.24, PLINTH_TOP, 'sharp'],
+  [0.2, 0.18],
+  [0.13, 0.3],
+  [0.1, 0.5],
+  [0.09, 0.8],
+  [0.07, 0.98],
+  [0.05, 1.02],
   [0, 1.03, 'sharp'],
 ];
 
@@ -458,32 +530,35 @@ function Queen({ pieceColor, isSelected }: PartProps) {
       <mesh geometry={spire} castShadow receiveShadow>
         <StoneMaterial pieceColor={pieceColor} isSelected={isSelected} />
       </mesh>
-      {[0.30, 0.62].map((y, i) => (
+      {[0.3, 0.62].map((y, i) => (
         <mesh key={y} position={[0, y, 0]} rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[i === 0 ? 0.135 : 0.10, 0.014, 8, 48]} />
+          <Geo kind="torus" args={[i === 0 ? 0.135 : 0.1, 0.014, 8, 48]} />
           <MetalMaterial pieceColor={pieceColor} />
         </mesh>
       ))}
       {/* crescent, opening upward; both sides show the moon face-on */}
       <group position={[0, 1.08, 0]} rotation={[0, pieceColor === 'w' ? 0 : Math.PI, -1.15 * Math.PI]}>
         <mesh castShadow>
-          <torusGeometry args={[0.19, 0.03, 12, 48, Math.PI * 1.3]} />
+          <Geo kind="torus" args={[0.19, 0.03, 12, 48, Math.PI * 1.3]} />
           <MetalMaterial pieceColor={pieceColor} />
         </mesh>
       </group>
       {/* orb held in the crescent */}
       <mesh position={[0, 1.17, 0]}>
-        <sphereGeometry args={[0.065, 24, 24]} />
+        <Geo kind="sphere" args={[0.065, 24, 24]} />
         <GemMaterial pieceColor={pieceColor} isSelected={isSelected} intensity={1.8} />
       </mesh>
       <mesh position={[0, 1.17, 0]}>
-        <sphereGeometry args={[0.10, 24, 24]} />
+        <Geo kind="sphere" args={[0.1, 24, 24]} />
         <CrystalMaterial pieceColor={pieceColor} />
       </mesh>
       {/* small stars */}
-      {[[0.16, 0.90, 0.10], [-0.14, 0.82, -0.12]].map(([x, y, z], i) => (
+      {[
+        [0.16, 0.9, 0.1],
+        [-0.14, 0.82, -0.12],
+      ].map(([x, y, z], i) => (
         <mesh key={i} position={[x, y, z]} rotation={[0.4, 0.2, Math.PI / 4]}>
-          <octahedronGeometry args={[0.03, 0]} />
+          <Geo kind="octahedron" args={[0.03, 0]} />
           <GemMaterial pieceColor={pieceColor} isSelected={isSelected} />
         </mesh>
       ))}
@@ -495,10 +570,19 @@ function Queen({ pieceColor, isSelected }: PartProps) {
 // King — crowned tower
 // ---------------------------------------------------------------------------
 const KING_TOWER: ProfilePoint[] = [
-  [0, PLINTH_TOP, 'sharp'], [0.30, PLINTH_TOP, 'sharp'],
-  [0.28, 0.18], [0.22, 0.28], [0.18, 0.45], [0.16, 0.70], [0.16, 0.95],
-  [0.20, 1.00, 'sharp'], [0.22, 1.04, 'sharp'], [0.22, 1.10, 'sharp'],
-  [0.14, 1.10, 'sharp'], [0.14, 1.05, 'sharp'], [0, 1.05, 'sharp'],
+  [0, PLINTH_TOP, 'sharp'],
+  [0.3, PLINTH_TOP, 'sharp'],
+  [0.28, 0.18],
+  [0.22, 0.28],
+  [0.18, 0.45],
+  [0.16, 0.7],
+  [0.16, 0.95],
+  [0.2, 1.0, 'sharp'],
+  [0.22, 1.04, 'sharp'],
+  [0.22, 1.1, 'sharp'],
+  [0.14, 1.1, 'sharp'],
+  [0.14, 1.05, 'sharp'],
+  [0, 1.05, 'sharp'],
 ];
 
 function King({ pieceColor, isSelected }: PartProps) {
@@ -506,13 +590,13 @@ function King({ pieceColor, isSelected }: PartProps) {
   const points = 8;
   return (
     <group scale={[SCALE, SCALE, SCALE]}>
-      <Plinth radius={0.40} pieceColor={pieceColor} isSelected={isSelected} />
+      <Plinth radius={0.4} pieceColor={pieceColor} isSelected={isSelected} />
       <mesh geometry={tower} castShadow receiveShadow>
         <StoneMaterial pieceColor={pieceColor} isSelected={isSelected} />
       </mesh>
       {[0.46, 0.95].map((y, i) => (
         <mesh key={y} position={[0, y, 0]} rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[i === 0 ? 0.185 : 0.165, 0.016, 8, 48]} />
+          <Geo kind="torus" args={[i === 0 ? 0.185 : 0.165, 0.016, 8, 48]} />
           <MetalMaterial pieceColor={pieceColor} />
         </mesh>
       ))}
@@ -523,22 +607,22 @@ function King({ pieceColor, isSelected }: PartProps) {
         return (
           <mesh
             key={i}
-            position={[Math.cos(a) * 0.19, 1.10 + (tall ? 0.09 : 0.05), Math.sin(a) * 0.19]}
+            position={[Math.cos(a) * 0.19, 1.1 + (tall ? 0.09 : 0.05), Math.sin(a) * 0.19]}
             rotation={[Math.sin(a) * 0.25, 0, -Math.cos(a) * 0.25]}
             castShadow
           >
-            <coneGeometry args={[0.035, tall ? 0.18 : 0.10, 8]} />
+            <Geo kind="cone" args={[0.035, tall ? 0.18 : 0.1, 8]} />
             <MetalMaterial pieceColor={pieceColor} />
           </mesh>
         );
       })}
       {/* floating gem above the crown */}
-      <mesh position={[0, 1.30, 0]} scale={[1, 1.6, 1]}>
-        <octahedronGeometry args={[0.075, 0]} />
+      <mesh position={[0, 1.3, 0]} scale={[1, 1.6, 1]}>
+        <Geo kind="octahedron" args={[0.075, 0]} />
         <GemMaterial pieceColor={pieceColor} isSelected={isSelected} intensity={1.8} />
       </mesh>
-      <mesh position={[0, 1.30, 0]} scale={[1, 1.6, 1]}>
-        <octahedronGeometry args={[0.105, 0]} />
+      <mesh position={[0, 1.3, 0]} scale={[1, 1.6, 1]}>
+        <Geo kind="octahedron" args={[0.105, 0]} />
         <CrystalMaterial pieceColor={pieceColor} />
       </mesh>
     </group>
@@ -554,38 +638,12 @@ const PIECE_MAP: Record<PieceSymbol, React.FC<PartProps>> = {
   p: Pawn,
 };
 
-export function ChessPieceFantasy3D({ type, color, position, isSelected, onClick }: ChessPiece3DProps) {
-  const groupRef = useRef<THREE.Group>(null!);
+export function ChessPieceFantasy3D(props: PieceProps) {
+  const { type, color, isSelected } = props;
   const Piece = PIECE_MAP[type];
-
-  const { pos } = useSpring({
-    pos: position,
-    config: { mass: 1, tension: 280, friction: 60 },
-  });
-
-  useFrame((state) => {
-    if (!groupRef.current) return;
-    const p = pos.get();
-    groupRef.current.position.x = p[0];
-    groupRef.current.position.z = p[2];
-    groupRef.current.position.y = isSelected
-      ? p[1] + 0.04 + Math.sin(state.clock.elapsedTime * 3) * 0.02
-      : p[1];
-  });
-
   return (
-    <group
-      ref={groupRef}
-      position={position}
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-    >
+    <AnimatedPiece {...props} hover={{ lift: 0.04, amp: 0.02, speed: 3 }} glowColor={GEM[color]}>
       <Piece pieceColor={color} isSelected={isSelected} />
-      {isSelected && (
-        <pointLight position={[0, 0.6, 0]} intensity={1.6} color={GEM[color]} distance={2.2} decay={2} />
-      )}
-    </group>
+    </AnimatedPiece>
   );
 }

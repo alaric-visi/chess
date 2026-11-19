@@ -4,11 +4,24 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Chess 3D</title>
-    <meta name="description" content="Interactive 3D chess with Classic, Sci-Fi, and Fantasy piece sets and an in-browser AI opponent." />
+    <meta name="color-scheme" content="light dark" />
+    <!-- Apply the saved or system theme before first paint to avoid a light flash. -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('chess3d_theme');
+          var dark = saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+          if (dark) document.documentElement.classList.add('dark');
+        } catch (e) {}
+      })();
+    </script>
+    <meta
+      name="description"
+      content="Interactive 3D chess with Classic, Sci-Fi, and Fantasy piece sets and an in-browser AI opponent."
+    />
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

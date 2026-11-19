@@ -1,19 +1,12 @@
-import { useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
-import { useSpring } from '@react-spring/three';
+import { AnimatedPiece, PieceProps } from './AnimatedPiece';
+import { Geo, SharedMaterial } from './Shared';
 import * as THREE from 'three';
 import { PieceSymbol, Color } from 'chess.js';
 
-interface ChessPiece3DProps {
-  type: PieceSymbol;
-  color: Color;
-  position: [number, number, number];
-  isSelected: boolean;
-  onClick: () => void;
-}
-
 const SCALE = 0.85;
-const LATHE_SEGMENTS = 64;
+// 40 radial segments and 4 samples per profile span keep pieces smooth at play
+// distance at well under half the triangles of 64 / 6.
+const LATHE_SEGMENTS = 40;
 
 // ---------------------------------------------------------------------------
 // Profile helpers
@@ -25,7 +18,7 @@ const LATHE_SEGMENTS = 64;
 // ---------------------------------------------------------------------------
 type ProfilePoint = [number, number] | [number, number, 'sharp'];
 
-const smoothProfile = (pts: ProfilePoint[], samplesPerSegment = 6): THREE.Vector2[] => {
+const smoothProfile = (pts: ProfilePoint[], samplesPerSegment = 4): THREE.Vector2[] => {
   const runs: THREE.Vector2[][] = [[]];
   for (const [x, y, flag] of pts) {
     const v = new THREE.Vector2(x, y);
@@ -72,7 +65,7 @@ const foot = (r: number): ProfilePoint[] => [
   [r, 0.05],
   [r - 0.01, 0.09],
   [r - 0.04, 0.12],
-  [r - 0.10, 0.15],
+  [r - 0.1, 0.15],
   [r - 0.14, 0.19],
 ];
 
@@ -87,64 +80,105 @@ const collar = (r: number, y: number): ProfilePoint[] => [
 // Staunton profiles (pre-scale units; one board square = 1)
 // ---------------------------------------------------------------------------
 const KING_PROFILE: ProfilePoint[] = [
-  ...foot(0.40),
-  [0.22, 0.24], [0.19, 0.32], [0.17, 0.44], [0.17, 0.56],
-  ...collar(0.20, 0.61),
-  [0.18, 0.72], [0.16, 0.82], [0.14, 0.92], [0.14, 1.00],
-  [0.18, 1.04], [0.22, 1.08], [0.23, 1.12], [0.20, 1.16],
-  [0.14, 1.20], [0.09, 1.26], [0.07, 1.30],
+  ...foot(0.4),
+  [0.22, 0.24],
+  [0.19, 0.32],
+  [0.17, 0.44],
+  [0.17, 0.56],
+  ...collar(0.2, 0.61),
+  [0.18, 0.72],
+  [0.16, 0.82],
+  [0.14, 0.92],
+  [0.14, 1.0],
+  [0.18, 1.04],
+  [0.22, 1.08],
+  [0.23, 1.12],
+  [0.2, 1.16],
+  [0.14, 1.2],
+  [0.09, 1.26],
+  [0.07, 1.3],
   [0, 1.32, 'sharp'],
 ];
 
 const QUEEN_PROFILE: ProfilePoint[] = [
   ...foot(0.37),
-  [0.20, 0.24], [0.17, 0.32], [0.15, 0.44], [0.15, 0.54],
+  [0.2, 0.24],
+  [0.17, 0.32],
+  [0.15, 0.44],
+  [0.15, 0.54],
   ...collar(0.18, 0.59),
-  [0.16, 0.70], [0.14, 0.80], [0.12, 0.90], [0.12, 0.98],
-  [0.15, 1.02], [0.19, 1.06], [0.21, 1.10], [0.20, 1.14],
-  [0.16, 1.16], [0.10, 1.18], [0.06, 1.20],
+  [0.16, 0.7],
+  [0.14, 0.8],
+  [0.12, 0.9],
+  [0.12, 0.98],
+  [0.15, 1.02],
+  [0.19, 1.06],
+  [0.21, 1.1],
+  [0.2, 1.14],
+  [0.16, 1.16],
+  [0.1, 1.18],
+  [0.06, 1.2],
   [0, 1.21, 'sharp'],
 ];
 
 const BISHOP_PROFILE: ProfilePoint[] = [
   ...foot(0.34),
-  [0.17, 0.24], [0.14, 0.32], [0.13, 0.44], [0.13, 0.52],
+  [0.17, 0.24],
+  [0.14, 0.32],
+  [0.13, 0.44],
+  [0.13, 0.52],
   ...collar(0.16, 0.56),
-  [0.14, 0.66], [0.13, 0.70],
+  [0.14, 0.66],
+  [0.13, 0.7],
   // mitre
-  [0.17, 0.76], [0.19, 0.84], [0.17, 0.92], [0.12, 0.99],
-  [0.07, 1.03], [0.04, 1.05],
+  [0.17, 0.76],
+  [0.19, 0.84],
+  [0.17, 0.92],
+  [0.12, 0.99],
+  [0.07, 1.03],
+  [0.04, 1.05],
   [0, 1.06, 'sharp'],
 ];
 
 const ROOK_PROFILE: ProfilePoint[] = [
   ...foot(0.36),
-  [0.21, 0.28], [0.20, 0.40], [0.20, 0.55], [0.22, 0.62],
+  [0.21, 0.28],
+  [0.2, 0.4],
+  [0.2, 0.55],
+  [0.22, 0.62],
   // tower
   [0.26, 0.66, 'sharp'],
-  [0.27, 0.70, 'sharp'],
-  [0.27, 0.90, 'sharp'],
+  [0.27, 0.7, 'sharp'],
+  [0.27, 0.9, 'sharp'],
   // recessed top
-  [0.18, 0.90, 'sharp'],
+  [0.18, 0.9, 'sharp'],
   [0.18, 0.85, 'sharp'],
   [0, 0.85, 'sharp'],
 ];
 
 const KNIGHT_BASE_PROFILE: ProfilePoint[] = [
   ...foot(0.34),
-  [0.17, 0.24], [0.16, 0.30],
+  [0.17, 0.24],
+  [0.16, 0.3],
   [0.18, 0.33, 'sharp'],
   [0.18, 0.36, 'sharp'],
   [0, 0.36, 'sharp'],
 ];
 
 const PAWN_PROFILE: ProfilePoint[] = [
-  [0, 0, 'sharp'], [0.30, 0, 'sharp'],
-  [0.30, 0.04], [0.29, 0.07], [0.26, 0.10], [0.20, 0.13], [0.16, 0.17],
-  [0.13, 0.22], [0.10, 0.30], [0.09, 0.38],
+  [0, 0, 'sharp'],
+  [0.3, 0, 'sharp'],
+  [0.3, 0.04],
+  [0.29, 0.07],
+  [0.26, 0.1],
+  [0.2, 0.13],
+  [0.16, 0.17],
+  [0.13, 0.22],
+  [0.1, 0.3],
+  [0.09, 0.38],
   ...collar(0.12, 0.41),
   [0.09, 0.49],
-  [0, 0.50, 'sharp'],
+  [0, 0.5, 'sharp'],
 ];
 
 // ---------------------------------------------------------------------------
@@ -154,28 +188,37 @@ const PAWN_PROFILE: ProfilePoint[] = [
 const KNIGHT_HEAD_THICKNESS = 0.18;
 
 const KNIGHT_HEAD_OUTLINE: [number, number][] = [
-  [-0.16, 0.34],            // back of neck, sitting on the base
-  [-0.20, 0.48],
+  [-0.16, 0.34], // back of neck, sitting on the base
+  [-0.2, 0.48],
   [-0.21, 0.56],
   // mane scallops up the back of the neck
-  [-0.17, 0.61], [-0.21, 0.66],
-  [-0.16, 0.71], [-0.20, 0.76],
-  [-0.15, 0.81], [-0.17, 0.86],
-  [-0.11, 0.90],            // crown
+  [-0.17, 0.61],
+  [-0.21, 0.66],
+  [-0.16, 0.71],
+  [-0.2, 0.76],
+  [-0.15, 0.81],
+  [-0.17, 0.86],
+  [-0.11, 0.9], // crown
   // ears
-  [-0.06, 0.92], [-0.04, 1.02], [0.00, 0.94],
-  [0.04, 0.95], [0.07, 1.03], [0.09, 0.92],
+  [-0.06, 0.92],
+  [-0.04, 1.02],
+  [0.0, 0.94],
+  [0.04, 0.95],
+  [0.07, 1.03],
+  [0.09, 0.92],
   // forehead and nose
-  [0.15, 0.88], [0.22, 0.80], [0.29, 0.71],
-  [0.33, 0.63],             // nose tip
+  [0.15, 0.88],
+  [0.22, 0.8],
+  [0.29, 0.71],
+  [0.33, 0.63], // nose tip
   [0.31, 0.57],
-  [0.26, 0.54],             // mouth
-  [0.20, 0.55],             // jaw
+  [0.26, 0.54], // mouth
+  [0.2, 0.55], // jaw
   [0.14, 0.57],
-  [0.08, 0.51],             // throat
+  [0.08, 0.51], // throat
   [0.03, 0.44],
-  [0.10, 0.38],
-  [0.16, 0.34],             // front of neck
+  [0.1, 0.38],
+  [0.16, 0.34], // front of neck
 ];
 
 const getKnightHead = () => {
@@ -229,12 +272,16 @@ const BLACK_MATERIAL = {
 };
 
 function PieceMaterial({ pieceColor, isSelected }: { pieceColor: Color; isSelected: boolean }) {
-  const base = pieceColor === 'w' ? WHITE_MATERIAL : BLACK_MATERIAL;
   return (
-    <meshPhysicalMaterial
-      {...base}
-      emissive={pieceColor === 'w' ? '#E8C97A' : '#C9A24E'}
-      emissiveIntensity={isSelected ? 0.35 : 0}
+    <SharedMaterial
+      id={`classic-body-${pieceColor}-${isSelected}`}
+      create={() =>
+        new THREE.MeshPhysicalMaterial({
+          ...(pieceColor === 'w' ? WHITE_MATERIAL : BLACK_MATERIAL),
+          emissive: pieceColor === 'w' ? '#E8C97A' : '#C9A24E',
+          emissiveIntensity: isSelected ? 0.35 : 0,
+        })
+      }
     />
   );
 }
@@ -243,8 +290,18 @@ function PieceMaterial({ pieceColor, isSelected }: { pieceColor: Color; isSelect
 function ContactShadow({ radius }: { radius: number }) {
   return (
     <mesh position={[0, 0.002, 0]}>
-      <cylinderGeometry args={[radius + 0.03, radius + 0.03, 0.004, 48]} />
-      <meshBasicMaterial color="#000000" transparent opacity={0.35} depthWrite={false} />
+      <Geo kind="cylinder" args={[radius + 0.03, radius + 0.03, 0.004, 48]} />
+      <SharedMaterial
+        id="classic-contact-shadow"
+        create={() =>
+          new THREE.MeshBasicMaterial({
+            color: '#000000',
+            transparent: true,
+            opacity: 0.35,
+            depthWrite: false,
+          })
+        }
+      />
     </mesh>
   );
 }
@@ -258,17 +315,17 @@ function King({ pieceColor, isSelected }: PartProps) {
   const geo = getLathe('king', KING_PROFILE);
   return (
     <group scale={[SCALE, SCALE, SCALE]}>
-      <ContactShadow radius={0.40} />
+      <ContactShadow radius={0.4} />
       <mesh geometry={geo} castShadow receiveShadow>
         <PieceMaterial pieceColor={pieceColor} isSelected={isSelected} />
       </mesh>
       {/* cross */}
       <mesh position={[0, 1.42, 0]} castShadow>
-        <boxGeometry args={[0.05, 0.22, 0.05]} />
+        <Geo kind="box" args={[0.05, 0.22, 0.05]} />
         <PieceMaterial pieceColor={pieceColor} isSelected={isSelected} />
       </mesh>
       <mesh position={[0, 1.46, 0]} castShadow>
-        <boxGeometry args={[0.17, 0.05, 0.05]} />
+        <Geo kind="box" args={[0.17, 0.05, 0.05]} />
         <PieceMaterial pieceColor={pieceColor} isSelected={isSelected} />
       </mesh>
     </group>
@@ -288,14 +345,14 @@ function Queen({ pieceColor, isSelected }: PartProps) {
         const a = (i / 8) * Math.PI * 2;
         return (
           <mesh key={i} position={[Math.cos(a) * 0.185, 1.135, Math.sin(a) * 0.185]} castShadow>
-            <sphereGeometry args={[0.032, 16, 16]} />
+            <Geo kind="sphere" args={[0.032, 16, 16]} />
             <PieceMaterial pieceColor={pieceColor} isSelected={isSelected} />
           </mesh>
         );
       })}
       {/* finial */}
       <mesh position={[0, 1.27, 0]} castShadow>
-        <sphereGeometry args={[0.07, 32, 32]} />
+        <Geo kind="sphere" args={[0.07, 32, 32]} />
         <PieceMaterial pieceColor={pieceColor} isSelected={isSelected} />
       </mesh>
     </group>
@@ -313,11 +370,14 @@ function Bishop({ pieceColor, isSelected }: PartProps) {
       </mesh>
       {/* diagonal mitre slit: a thin dark plate that pokes through the front and back */}
       <mesh position={[0.02, 0.88, 0]} rotation={[0, 0, 0.55]}>
-        <boxGeometry args={[0.012, 0.24, 0.5]} />
-        <meshStandardMaterial color={slitColor} roughness={0.9} />
+        <Geo kind="box" args={[0.012, 0.24, 0.5]} />
+        <SharedMaterial
+          id={`classic-slit-${slitColor}`}
+          create={() => new THREE.MeshStandardMaterial({ color: slitColor, roughness: 0.9 })}
+        />
       </mesh>
       <mesh position={[0, 1.09, 0]} castShadow>
-        <sphereGeometry args={[0.042, 24, 24]} />
+        <Geo kind="sphere" args={[0.042, 24, 24]} />
         <PieceMaterial pieceColor={pieceColor} isSelected={isSelected} />
       </mesh>
     </group>
@@ -343,7 +403,7 @@ function Rook({ pieceColor, isSelected }: PartProps) {
             rotation={[0, Math.PI / 2 - a, 0]}
             castShadow
           >
-            <boxGeometry args={[0.13, 0.12, 0.09]} />
+            <Geo kind="box" args={[0.13, 0.12, 0.09]} />
             <PieceMaterial pieceColor={pieceColor} isSelected={isSelected} />
           </mesh>
         );
@@ -372,8 +432,11 @@ function Knight({ pieceColor, isSelected }: PartProps) {
         </mesh>
         {[-eyeX, eyeX].map((x) => (
           <mesh key={x} position={[0.13, 0.82, x]} castShadow>
-            <sphereGeometry args={[0.022, 12, 12]} />
-            <meshStandardMaterial color={eyeColor} roughness={0.2} />
+            <Geo kind="sphere" args={[0.022, 12, 12]} />
+            <SharedMaterial
+              id={`classic-eye-${eyeColor}`}
+              create={() => new THREE.MeshStandardMaterial({ color: eyeColor, roughness: 0.2 })}
+            />
           </mesh>
         ))}
       </group>
@@ -385,12 +448,12 @@ function Pawn({ pieceColor, isSelected }: PartProps) {
   const geo = getLathe('pawn', PAWN_PROFILE);
   return (
     <group scale={[SCALE, SCALE, SCALE]}>
-      <ContactShadow radius={0.30} />
+      <ContactShadow radius={0.3} />
       <mesh geometry={geo} castShadow receiveShadow>
         <PieceMaterial pieceColor={pieceColor} isSelected={isSelected} />
       </mesh>
       <mesh position={[0, 0.59, 0]} castShadow>
-        <sphereGeometry args={[0.11, 32, 32]} />
+        <Geo kind="sphere" args={[0.11, 32, 32]} />
         <PieceMaterial pieceColor={pieceColor} isSelected={isSelected} />
       </mesh>
     </group>
@@ -406,38 +469,12 @@ const PIECE_MAP: Record<PieceSymbol, React.FC<PartProps>> = {
   p: Pawn,
 };
 
-export function ChessPiece3D({ type, color, position, isSelected, onClick }: ChessPiece3DProps) {
-  const groupRef = useRef<THREE.Group>(null!);
+export function ChessPiece3D(props: PieceProps) {
+  const { type, color, isSelected } = props;
   const Piece = PIECE_MAP[type];
-
-  const { pos } = useSpring({
-    pos: position,
-    config: { mass: 1, tension: 280, friction: 60 },
-  });
-
-  useFrame((state) => {
-    if (!groupRef.current) return;
-    const p = pos.get();
-    groupRef.current.position.x = p[0];
-    groupRef.current.position.z = p[2];
-    groupRef.current.position.y = isSelected
-      ? p[1] + 0.03 + Math.sin(state.clock.elapsedTime * 4) * 0.025
-      : p[1];
-  });
-
   return (
-    <group
-      ref={groupRef}
-      position={position}
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-    >
+    <AnimatedPiece {...props} hover={{ lift: 0.03, amp: 0.025, speed: 4 }} glowColor={'#F3D98B'}>
       <Piece pieceColor={color} isSelected={isSelected} />
-      {isSelected && (
-        <pointLight position={[0, 0.6, 0]} intensity={1.5} color="#F3D98B" distance={2} decay={2} />
-      )}
-    </group>
+    </AnimatedPiece>
   );
 }
