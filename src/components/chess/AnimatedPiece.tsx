@@ -76,11 +76,13 @@ export function AnimatedPiece({
   // Where the current move started, for the knight's arc.
   const moveFrom = useRef<[number, number]>([position[0], position[2]]);
   const [x, y, z] = position;
+  const isDragging = Boolean(dragPosition);
   useEffect(() => {
+    if (isDragging) return;
     const p = pos.get();
     moveFrom.current = [p[0], p[2]];
     api.start({ pos: [x, y, z], immediate: reducedMotion });
-  }, [api, pos, x, y, z, reducedMotion]);
+  }, [api, pos, x, y, z, reducedMotion, isDragging]);
 
   useFrame((state, delta) => {
     const g = groupRef.current;
